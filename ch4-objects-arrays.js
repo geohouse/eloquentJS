@@ -131,3 +131,40 @@ function nth(list, n) {
 
 console.log(nth(arrayToList([10, 20, 30, 40, 50, 60]), 2));
 console.log(nth(arrayToList([10, 20, 30]), 1));
+
+// deep equal
+
+const deepEqual = function (obj1, obj2) {
+  if (obj1 === obj2) {
+    return true;
+  }
+  if (
+    typeof obj1 !== "object" ||
+    typeof obj2 !== "object" ||
+    obj1 === null ||
+    obj2 === null
+  ) {
+    return false;
+  }
+  if (obj1 !== obj2) {
+    if (Object.keys(obj1).length !== Object.keys(obj2).length) {
+      return false;
+    }
+    for (let key of Object.keys(obj1)) {
+      console.log({ key });
+      if (!Object.keys(obj2).includes(key)) {
+        return false;
+      } else {
+        console.log("in recursion");
+        console.log(obj1[key]);
+        console.log(obj2[key]);
+        return deepEqual(obj1[key], obj2[key]);
+      }
+    }
+  }
+  return true;
+};
+
+let obj = { here: { is: "an" }, object: 2 };
+console.log(deepEqual(obj, { here: 1, object: 2 }));
+console.log(deepEqual(obj, { here: { is: "an" }, object: 2 }));
