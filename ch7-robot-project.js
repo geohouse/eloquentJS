@@ -103,11 +103,15 @@ function runRobot(state, robot, memory) {
   for (let turn = 0; ; turn++) {
     if (state.parcels.length === 0) {
       console.log(`Done in ${turn} turns`);
-      break;
+      return turn;
+      //break;
     }
     // Call the robot fxn with the current state, and provide its memory.
     // returns an action that will get added to its current memory
     let action = robot(state, memory);
+    // returns new VillageState, with updated parcel list (parcels being carried
+    // have updated addresses, and parcels that were delivered have been removed from the
+    // parcel array)
     state = state.move(action.direction);
     memory = action.memory;
     //console.log(`Moved to ${action.direction}`);
@@ -198,5 +202,125 @@ function findRoute(graph, from, to) {
   }
 }
 
+// optimization attempt
+// {place, parcels} is destructuring the state variable passed in
+function goalRobot_optimize({ place, parcels }, route) {
+  console.log("parcel mapping");
+  parcels.map((parcel) => console.log(parcel));
+  console.log("end");
+  console.log("goal oriented route is:");
+  console.log({ route });
+  console.log({ place });
+
+  if (route.length === 0) {
+    // calculate routes for all parcels
+    let routeHolder = parcels.map((parcel) => {
+      // pick up route needed
+      if (parcel.place !== place) {
+        route = findRoute(roadGraph, place, parcel.place);
+        return { route: route, type: "pickup" };
+      } else {
+        // Drop off route needed
+        route = findRoute(roadGraph, place, parcel.address);
+        return { route: route, type: "delivery" };
+      }
+    });
+
+    console.log("goal robot optimize route holder is:");
+    console.log(routeHolder);
+
+    // Prefer pickup routes with this multiplied weight (higher values give more weight)
+    const pickupWeight = 3;
+
+    let currMaxScoreForRoute;
+    let currMaxScoreRoute = [];
+
+    for (let index = 0; index < routeHolder.length; index++) {
+      let currScore =
+        (routeHolder[index].type === "pickup" ? pickupWeight : 1) -
+        routeHolder[index].route.length;
+      if (index === 0) {
+        currMaxScoreForRoute = currScore;
+        currMaxScoreRoute = routeHolder[index].route;
+      } else {
+        if (currScore > currMaxScoreForRoute) {
+          currMaxScoreForRoute = currScore;
+          currMaxScoreRoute = routeHolder[index].route;
+        }
+      }
+    }
+
+    route = currMaxScoreRoute;
+  }
+  console.log({ route });
+  console.log(route);
+
+  // if (route.length === 0) {
+  //   let parcel = parcels[0];
+  //   console.log(parcel["place"]);
+  //   console.log(parcel.address);
+  //   if (parcel.place != place) {
+  //     route = findRoute(roadGraph, place, parcel.place);
+  //   } else {
+  //     route = findRoute(roadGraph, place, parcel.address);
+  //   }
+  // }
+  // console.log("Direction route[0] is:");
+  // console.log(route[0]);
+  // console.log("Memory route.slice(1) is:");
+  // console.log(route.slice(1));
+  return {
+    direction: route[0],
+    memory: route.slice(1),
+  };
+}
+
+// place is the current location
+function goalOrientedRobot({ place, parcels }, route) {
+  console.log("goal oriented route is:");
+  console.log({ route });
+  console.log({ place });
+  if (route.length === 0) {
+    let parcel = parcels[0];
+    console.log(parcel["place"]);
+    console.log(parcel.address);
+    if (parcel.place != place) {
+      route = findRoute(roadGraph, place, parcel.place);
+    } else {
+      route = findRoute(roadGraph, place, parcel.address);
+    }
+  }
+  return { direction: route[0], memory: route.slice(1) };
+}
+
 // runRobot(VillageState.random(), randomRobot);
-runRobot(VillageState.random(), routeRobot, []);
+//runRobot(VillageState.random(), routeRobot, []);
+const numTurnsTaken = runRobot(VillageState.random(), goalRobot_optimize, []);
+console.log("a random village state is:");
+console.log(VillageState.random());
+console.log({ numTurnsTaken });
+
+// measuring robots
+function compareRobots(robot1, memory1, robot2, memory2) {
+  let turnsTakenHolder = { robot1: [], robot2: [] };
+  for (let taskCount = 0; taskCount < 100; taskCount++) {
+    let state = VillageState.random();
+    let turnsRobot1 = runRobot(state, robot1, memory1);
+    let turnsRobot2 = runRobot(state, robot2, memory2);
+    turnsTakenHolder.robot1.push(turnsRobot1);
+    turnsTakenHolder.robot2.push(turnsRobot2);
+  }
+  meanTurnsTakenRobot1 =
+    turnsTakenHolder.robot1.reduce((total, current) => (total += current), 0) /
+    100;
+  meanTurnsTakenRobot2 =
+    turnsTakenHolder.robot2.reduce((total, current) => (total += current), 0) /
+    100;
+  console.log({ meanTurnsTakenRobot1 });
+  console.log({ meanTurnsTakenRobot2 });
+}
+
+compareRobots(goalRobot_optimize, [], goalOrientedRobot, []);
+
+// Trying to improve robot efficiency
+//
