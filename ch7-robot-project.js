@@ -322,5 +322,49 @@ function compareRobots(robot1, memory1, robot2, memory2) {
 
 compareRobots(goalRobot_optimize, [], goalOrientedRobot, []);
 
-// Trying to improve robot efficiency
+// Trying to improve robot efficiency - see above for worked output.
 //
+
+// Persistent group
+
+class Group {
+  constructor() {
+    this.group = [];
+  }
+  add(value) {
+    if (!this.group.includes(value)) {
+      this.group.push(value);
+    }
+  }
+  delete(value) {
+    this.group = this.group.filter((element) => element !== value);
+  }
+  has(value) {
+    return this.group.indexOf(value) >= 0 ? true : false;
+  }
+}
+
+class PGroup {
+  constructor(input) {
+    this.array = input;
+  }
+  add(value) {
+    return new PGroup([...this.array, value]);
+  }
+  delete(value) {
+    return new PGroup(this.array.filter((arrayEntry) => arrayEntry !== value));
+  }
+  has(value) {
+    return new PGroup(this.array.includes(value));
+  }
+}
+
+PGroup.empty = new PGroup([]);
+
+let a = PGroup.empty.add("a");
+let ab = a.add("b");
+let b = ab.delete("a");
+
+console.log(b.has("b"));
+console.log(a.has("b"));
+console.log(b.has("a"));
