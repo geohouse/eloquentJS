@@ -241,6 +241,24 @@ class Player {
 
 Player.prototype.size = new Vec(0.8, 1.5);
 
+class Monster {
+  constructor(pos, speed) {
+    this.pos = pos;
+    this.speed = speed;
+  }
+
+  get type() {
+    return "monster";
+  }
+
+  static create(pos) {
+    return new Monster(pos.plus(new Vec(0, -1)));
+  }
+
+  update(time, state) {}
+  collide(state) {}
+}
+
 // may need to uncomment depending on whether my translation for the static instance var of size in the class above works or not
 //Player.prototype.size = new Vec(0.8, 1.5);
 
@@ -343,6 +361,7 @@ const levelChars = {
   "=": Lava,
   "|": Lava,
   v: Lava,
+  M: Monster,
 };
 
 // basic testing
@@ -598,11 +617,13 @@ function trackKeys(keys) {
   }
   window.addEventListener("keydown", track);
   window.addEventListener("keyup", track);
+
+  down.unregister = function () {
+    window.removeEventListener("keydown", track);
+    window.removeEventListener("keyup", track);
+  };
   return down;
 }
-
-// Object with the key names as the keys and boolean of whether they're currently pressed down as the values
-const arrowKeys = trackKeys(["ArrowLeft", "ArrowRight", "ArrowUp"]);
 
 // Wrapper for requestAnimationFrame. Animation stops when it returns false
 function runAnimation(frameFunc) {
@@ -622,8 +643,30 @@ function runLevel(level, Display) {
   let display = new Display(document.body, level);
   let state = State.start(level);
   let ending = 1;
+  let running = "yes";
+
   return new Promise((resolve) => {
-    runAnimation((time) => {
+    function escHandler(event) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (running === "no") {
+        running = "yes";
+        runAnimation(frame);
+      } else if (running === "yes") {
+        running = "pausing";
+      } else {
+        running = "yes";
+      }
+    }
+    window.addEventListener("keydown", escHandler);
+    // Object with the key names as the keys and boolean of whether they're currently pressed down as the values
+    let arrowKeys = trackKeys(["ArrowLeft", "ArrowRight", "ArrowUp"]);
+
+    function frame(time) {
+      if (running === "pausing") {
+        running = "no";
+        return false;
+      }
       state = state.update(time, arrowKeys);
       display.syncState(state);
       if (state.status === "playing") {
@@ -635,9 +678,13 @@ function runLevel(level, Display) {
       } else {
         display.clear();
         resolve(state.status);
+        // Remove the arrow key event handlers
+        arrowKeys.unregister();
+        window.remove;
         return false;
       }
-    });
+    }
+    runAnimation(frame);
   });
 }
 
@@ -645,13 +692,21 @@ async function runGame(plans, Display) {
   // The level incrementor isn't in the for loop def here (only the last ';' to denote where it would go), but instead is only
   // triggered when the current level is beaten, so the current level keeps
   // re-starting when the player dies
+  let lives = 3;
   for (let level = 0; level < plans.length; ) {
+    console.log(`You have ${lives} remaining}`);
     let status = await runLevel(new Level(plans[level]), Display);
     if (status === "won") {
       level++;
+    } else {
+      lives--;
     }
   }
-  console.log("You've won!");
+  if (lives > 0) {
+    console.log("You've won!");
+  } else {
+    console.log("Game over.");
+  }
 }
 
 runGame(GAME_LEVELS, DOMDisplay);
