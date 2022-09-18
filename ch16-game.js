@@ -187,15 +187,6 @@ var GAME_LEVELS = [
 `,
 ];
 
-if (
-  typeof module != "undefined" &&
-  module.exports &&
-  (typeof window == "undefined" || window.exports != exports)
-)
-  module.exports = GAME_LEVELS;
-if (typeof global != "undefined" && !global.GAME_LEVELS)
-  global.GAME_LEVELS = GAME_LEVELS;
-
 // top left is 0,0, with each square 1 unit high and wide
 
 let simpleLevelPlan = `
@@ -252,12 +243,20 @@ class Monster {
   }
 
   static create(pos) {
-    return new Monster(pos.plus(new Vec(0, -1)));
+    return new Monster(pos.plus(new Vec(0, -1)), new Vec(2, 0));
   }
 
-  update(time, state) {}
-  collide(state) {}
+  update(time, state) {
+    let newPos = this.pos.plus(this.speed.times(time));
+    if (!state.level.touches(newPos, this.size, "wall")) {
+      return new Monster(newPos, this.speed);
+    } else {
+      return new Monster(this.pos, this.speed.times(-1));
+    }
+  }
 }
+
+Monster.prototype.size = new Vec(1.2, 2);
 
 // may need to uncomment depending on whether my translation for the static instance var of size in the class above works or not
 //Player.prototype.size = new Vec(0.8, 1.5);
@@ -288,6 +287,19 @@ class Lava {
 
 Lava.prototype.size = new Vec(1, 1);
 
+Lava.prototype.update = function (time, state) {
+  let newPos = this.pos.plus(this.speed.times(time));
+  if (!state.level.touches(newPos, this.size, "wall")) {
+    return new Lava(newPos, this.speed, this.reset);
+  } else if (this.reset) {
+    // this activates for dripping lava, which has a reset position
+    return new Lava(this.reset, this.speed, this.reset);
+  } else {
+    // This is bouncing lava that flips its speed to look like it's bounced.
+    return new Lava(this.pos, this.speed.times(-1));
+  }
+};
+
 // Coins have slight up/down wobble. To track, it stores a base position, and a wobble property to
 // keep track of its wobble location. Together can provide its absolute location.
 class Coin {
@@ -309,6 +321,18 @@ class Coin {
 }
 
 Coin.prototype.size = new Vec(0.6, 0.6);
+
+const levelChars = {
+  ".": "empty",
+  "#": "wall",
+  "+": "lava",
+  "@": Player,
+  o: Coin,
+  "=": Lava,
+  "|": Lava,
+  v: Lava,
+  M: Monster,
+};
 
 // parse and store a level object
 class Level {
@@ -352,22 +376,10 @@ class State {
   }
 }
 
-const levelChars = {
-  ".": "empty",
-  "#": "wall",
-  "+": "lava",
-  "@": Player,
-  o: Coin,
-  "=": Lava,
-  "|": Lava,
-  v: Lava,
-  M: Monster,
-};
-
 // basic testing
-let simpleLevel = new Level(simpleLevelPlan);
-console.log(simpleLevel);
-console.log(`${simpleLevel.width} by ${simpleLevel.height}`);
+// let simpleLevel = new Level(simpleLevelPlan);
+// console.log(simpleLevel);
+// console.log(`${simpleLevel.width} by ${simpleLevel.height}`);
 
 // attrs is an object
 // ...children is the remaining arguments that were passed to elt, packaged as an array
@@ -398,7 +410,7 @@ const scale = 20;
 
 // the ... spreading of the .map() return values spreads them from an array into a
 // sequence of values. This sequence of values then gets packed into an array
-// when the elt("table"...) call is run (due to spread operator in its parameters),
+// when the elt("table",...) call is run (due to spread operator in its parameters),
 // and becomes the 'children' array in elt.
 // This draws the static background of the game once (as a table of cells)
 function drawGrid(level) {
@@ -546,6 +558,25 @@ Coin.prototype.collide = function (state) {
   return new State(state.level, filtered, status);
 };
 
+Monster.prototype.collide = function (state) {
+  // Calculate the locations of the top of the monster and the bottom of the player
+  let player = state.actors.filter((actor) => actor.type === "player");
+  console.log(player);
+  console.log(Player.prototype.size.y);
+  let playerBottomPos = player[0].pos.y + Player.prototype.size.y;
+  let monsterTopPos = this.pos.y;
+  console.log(monsterTopPos);
+  console.log(playerBottomPos);
+  // If they're within a small distance, then the player defeats the monster (causing it to disappear by being
+  // filtered out of the actors used for the new state), otherwise the player loses
+  if (Math.abs(playerBottomPos - monsterTopPos) < 0.2) {
+    let filteredActors = state.actors.filter((actor) => actor != this);
+    return new State(state.level, filteredActors, state.status);
+  } else {
+    return new State(state.level, state.actors, "lost");
+  }
+};
+
 // Actor updates
 Lava.prototype.update = function (time, state) {
   let newPos = this.pos.plus(this.speed.times(time));
@@ -640,7 +671,9 @@ function runAnimation(frameFunc) {
 }
 
 function runLevel(level, Display) {
-  let display = new Display(document.body, level);
+  // Comment out to use the DOM game display
+  // let display = new DOMDisplay(document.body, level)
+  let display = new CanvasDisplay(document.body, level);
   let state = State.start(level);
   let ending = 1;
   let running = "yes";
@@ -709,4 +742,226 @@ async function runGame(plans, Display) {
   }
 }
 
-runGame(GAME_LEVELS, DOMDisplay);
+// Full game. Works, but commented out.
+//runGame(GAME_LEVELS, DOMDisplay);
+
+// canvas based implementation of the game
+
+class CanvasDisplay {
+  constructor(parent, level) {
+    this.canvas = document.createElement("canvas");
+    this.canvas.width = Math.min(600, level.width * scale);
+    this.canvas.height = Math.min(450, level.height * scale);
+    parent.appendChild(this.canvas);
+    this.cx = this.canvas.getContext("2d");
+
+    this.flipPlayer = false;
+
+    this.viewport = {
+      left: 0,
+      top: 0,
+      width: this.canvas.width / scale,
+      height: this.canvas.height / scale,
+    };
+  }
+
+  clear() {
+    this.canvas.remove();
+  }
+}
+
+CanvasDisplay.prototype.syncState = function (state) {
+  this.updateViewport(state);
+  this.clearDisplay(state.status);
+  this.drawBackground(state.level);
+  this.drawActors(state.actors);
+};
+
+CanvasDisplay.prototype.updateViewport = function (state) {
+  let view = this.viewport;
+  let margin = view.width / 3;
+  let player = state.player;
+  let center = player.pos.plus(player.size.times(0.5));
+
+  // Make sure the center of the display stays within the x, y bounds of the level,
+  // and the x,y bounds of the margin area near the center of the screen if at all possible
+  if (center.x < view.left + margin) {
+    view.left = Math.max(center.x - margin, 0);
+  } else if (center.x > view.left + view.width - margin) {
+    view.left = Math.min(
+      center.x + margin - view.width,
+      state.level.width - view.width
+    );
+  }
+  if (center.y < view.top + margin) {
+    view.top = Math.max(center.y - margin, 0);
+  } else if (center.y > view.top + view.height - margin) {
+    view.top = Math.min(
+      center.y + margin - view.height,
+      state.level.height - view.height
+    );
+  }
+};
+
+// use brighter or darker colors for the fill if the game is won or lost
+CanvasDisplay.prototype.clearDisplay = function (status) {
+  if (status === "won") {
+    this.cx.fillStyle = "rgb(68,191,255)";
+  } else if (status === "lost") {
+    this.cx.fillStyle = "rgb(44,136,214)";
+  } else {
+    this.cx.fillStyle = "rgb(52,166,251)";
+  }
+  this.cx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+};
+
+// Figure out which tiles are visible in the current viewport and render those
+
+let otherSprites = document.createElement("img");
+otherSprites.src = "./img/sprites.png";
+
+CanvasDisplay.prototype.drawBackground = function (level) {
+  let { left, top, width, height } = this.viewport;
+  let xStart = Math.floor(left);
+  let xEnd = Math.ceil(left + width);
+  let yStart = Math.floor(top);
+  let yEnd = Math.ceil(top + height);
+
+  for (let y = yStart; y < yEnd; y++) {
+    for (let x = xStart; x < xEnd; x++) {
+      let tile = level.rows[y][x];
+      if (tile === "empty") {
+        continue;
+      }
+      let screenX = (x - left) * scale;
+      let screenY = (y - top) * scale;
+      // Determines the x location for the cut rectangle in the sprites image file
+      let tileX = tile === "lava" ? scale : 0;
+      // cut out the correct sprite (either lava or wall) and place it on the screen with the correct scale
+      // This doesn't wait for the sprite to finish loading, but if it isn't finished, the only thing that happens
+      // is that the drawing isn't rendered (not a big deal for a few frames). Once it does finish loading,
+      // the sprites will be picked up and used in each render after.
+      this.cx.drawImage(
+        otherSprites,
+        tileX,
+        0,
+        scale,
+        scale,
+        screenX,
+        screenY,
+        scale,
+        scale
+      );
+    }
+  }
+};
+
+// Render the player using the action sprites. #1-8 are cycled when walking, #9 is at rest, and # 10
+// is used when jumping (when the y velocity !== 0). The sprites are wider than the player object (24px instead of 16px),
+// so use `playerXOverlap` to adjust the x-coordinates and width.
+
+let playerSprites = document.createElement("img");
+playerSprites.src = "./img/player.png";
+// overlap in each direction. Object width = 16 + 2 * overlap of 4 = the 24px width of the sprites.
+const playerXOverlap = 4;
+
+// Makes a flip by moving the axis to `around`, then flipping, the restoring the axis to its original location.
+// Because canvas works with cumulative side-effects instead of returned values for drawing, this will flip
+// the canvas for any calls that come after it, without its needing to return anything from this function.
+function flipHorizontally(context, around) {
+  context.translate(around, 0);
+  context.scale(-1, 1);
+  context.translate(-around, 0);
+}
+
+CanvasDisplay.prototype.drawPlayer = function (player, x, y, width, height) {
+  width += playerXOverlap * 2;
+  x -= playerXOverlap;
+  if (player.speed.x !== 0) {
+    // boolean for whether the sprite (which is right-facing) needs to be flipped (if it's moving to the left)
+    this.flipPlayer = player.speed.x < 0;
+  }
+  // default is tile 8 (at rest)
+  let tile = 8;
+
+  // if the player is jumping
+  if (player.speed.y !== 0) {
+    tile = 9;
+  } else if (player.speed.x !== 0) {
+    // get the tile number for walking based on the time in the range of 0-7
+    tile = Math.floor(Date.now() / 60) % 8;
+  }
+
+  this.cx.save();
+  if (this.flipPlayer) {
+    flipHorizontally(this.cx, x + width / 2);
+  }
+  // Get the x axis of the necessary sprite start point
+  let tileX = tile * width;
+  this.cx.drawImage(
+    playerSprites,
+    tileX,
+    0,
+    width,
+    height,
+    x,
+    y,
+    width,
+    height
+  );
+  this.cx.restore();
+};
+
+CanvasDisplay.prototype.drawActors = function (actors) {
+  for (let actor of actors) {
+    let width = actor.size.x * scale;
+    let height = actor.size.y * scale;
+    // Get x and y relative to the top left of the level (not viewport)
+    let x = (actor.pos.x - this.viewport.left) * scale;
+    let y = (actor.pos.y - this.viewport.top) * scale;
+    if (actor.type === "player") {
+      this.drawPlayer(actor, x, y, width, height);
+    } else {
+      // set the tile offset in the sprites file. These are ONLY the actors here,
+      // which are the things (other than the player) that can move - the
+      // coins move up and down, and the lava, depending on its type,
+      // can move side to side or up and down. We don't need to worry about
+      // rendering the walls here, because they don't move and therefore
+      // are rendered in the background render call instead, so can just use
+      // a ternary operator to switch between the coin and the lava tile in the sprites file.
+      let tileX = (actor.type === "coin" ? 2 : 1) * scale;
+      this.cx.drawImage(
+        otherSprites,
+        tileX,
+        0,
+        width,
+        height,
+        x,
+        y,
+        width,
+        height
+      );
+    }
+  }
+};
+
+runGame(GAME_LEVELS, CanvasDisplay);
+
+// Monster
+const monsterLevel = `
+..................................
+.################################.
+.#..............................#.
+.#..............................#.
+.#..............................#.
+.#...........................o..#.
+.#..@...........................#.
+.##########..............########.
+..........#..o..o..o..o..#........
+..........#...........M..#........
+..........################........
+..................................
+`;
+
+// Works, but commented out
+//runLevel(new Level(monsterLevel));
