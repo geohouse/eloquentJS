@@ -62,15 +62,17 @@ function star([xLoc, yLoc]) {
   // trace it clockwise
   let angleIncrement = Math.PI / 4;
   let radius = 50;
+  let xCenter = xLoc + radius;
+  let yCenter = yLoc + radius;
   cx.beginPath();
-  cx.moveTo(xLoc + radius, yLoc);
+  cx.moveTo(xCenter + radius, yCenter);
   for (let lobeCounter = 1; lobeCounter < 9; lobeCounter++) {
     let angle = lobeCounter * angleIncrement;
     cx.quadraticCurveTo(
-      xLoc,
-      yLoc,
-      xLoc + Math.cos(angle) * radius,
-      yLoc + Math.sin(angle) * radius
+      xCenter,
+      yCenter,
+      xCenter + Math.cos(angle) * radius,
+      yCenter + Math.sin(angle) * radius
     );
     cx.fillStyle = "gold";
     cx.fill();
@@ -81,9 +83,11 @@ function star([xLoc, yLoc]) {
 //redDiamond([50, 50]);
 //zigZag([50, 50], 3);
 //spiral([50, 50], 100);
-star([100, 100]);
+// Not working quite right, but not sure what else to try. The
+// working code from the answers is below as star2.
+//star([100, 100]);
 
-// function star(x, y) {
+// function star2(x, y) {
 //   let radius = 50,
 //     xCenter = x + radius,
 //     yCenter = y + radius;
@@ -101,4 +105,100 @@ star([100, 100]);
 //   cx.fillStyle = "gold";
 //   cx.fill();
 // }
-// star(100, 100);
+//star2(50, 50);
+
+// works, just commented out.
+// Pie chart with labels
+// const results = [
+//   { name: "Satisfied", count: 1043, color: "lightblue" },
+//   { name: "Neutral", count: 563, color: "lightgreen" },
+//   { name: "Unsatisfied", count: 510, color: "pink" },
+//   { name: "No comment", count: 175, color: "silver" },
+// ];
+
+// let total = results.reduce((sum, { count }) => sum + count, 0);
+// let currentAngle = -0.5 * Math.PI;
+// let centerX = 300;
+// let centerY = 150;
+// let radius = 100;
+
+// for (let result of results) {
+//   let sliceAngle = (result.count / total) * 2 * Math.PI;
+//   cx.beginPath();
+//   cx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
+
+//   cx.lineTo(centerX, centerY);
+//   cx.fillStyle = result.color;
+//   cx.fill();
+//   cx.textBaseline = "middle";
+//   if (
+//     currentAngle + sliceAngle / 2 >= -0.5 * Math.PI &&
+//     currentAngle + sliceAngle / 2 < 0.5 * Math.PI
+//   ) {
+//     cx.textAlign = "left";
+//   } else {
+//     cx.textAlign = "right";
+//   }
+//   cx.fillText(
+//     result.name,
+//     centerX + Math.cos(currentAngle + sliceAngle / 2) * 1.2 * radius,
+//     centerY + Math.sin(currentAngle + sliceAngle / 2) * 1.2 * radius
+//   );
+//   currentAngle += sliceAngle;
+// }
+
+// bouncing ball
+
+class Vec {
+  constructor(x, y, speedX, speedY) {
+    this.x = x;
+    this.y = y;
+    this.velX = speedX;
+    this.velY = speedY;
+  }
+  plus(other) {
+    return new Vec(this.x + other.x, this.y + other.y);
+  }
+  times(factor) {
+    return new Vec(this.x * factor.x, this.y * factor.y);
+  }
+}
+
+let lastTime = null;
+let boxSize = 300;
+let ballRadius = 20;
+let ball = new Vec(
+  Math.floor(Math.random() * (boxSize - 2 * ballRadius)),
+  Math.floor(Math.random() * (boxSize - 2 * ballRadius)),
+  Math.floor(Math.random() * 100),
+  Math.floor(Math.random() * 100)
+);
+function frame(time) {
+  if (lastTime != null) {
+    updateAnimation(Math.min(100, time - lastTime) / 1000);
+  }
+  lastTime = time;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function updateAnimation(step) {
+  cx.clearRect(0, 0, 600, 300);
+  cx.strokeRect(0, 0, boxSize, boxSize);
+  let stepX = ball.x + step * ball.velX;
+  let stepY = ball.y + step * ball.velY;
+  cx.beginPath();
+  cx.arc(stepX, stepY, ballRadius, 0, Math.PI * 2);
+  cx.fillStyle = "pink";
+  cx.fill();
+  ball.x = stepX;
+  ball.y = stepY;
+  // bounce x
+  if (ball.x + ballRadius >= boxSize || ball.x - ballRadius <= 0) {
+    ball.velX = -ball.velX;
+  }
+  // bounce y
+  if (ball.y + ballRadius >= boxSize || ball.y - ballRadius <= 0) {
+    ball.velY = -ball.velY;
+  }
+}
